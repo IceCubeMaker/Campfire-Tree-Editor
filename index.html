@@ -452,6 +452,72 @@
   /* ── CONNECTING LINE ── */
   #connecting-line { position: fixed; top: 0; left: 0; pointer-events: none; z-index: 9999; }
 
+  /* ── HELP PANEL ── */
+  #help-panel {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.82);
+    display: none; align-items: flex-start; justify-content: center;
+    z-index: 1100; overflow-y: auto; padding: 40px 20px;
+  }
+  #help-panel.open { display: flex; }
+  #help-box {
+    background: var(--soot); border: 1px solid var(--node-border); border-radius: 4px;
+    width: min(820px, 96vw);
+    display: flex; flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.85);
+    margin: auto;
+  }
+  #help-box-header {
+    padding: 14px 20px; border-bottom: 1px solid var(--node-border);
+    display: flex; justify-content: space-between; align-items: center;
+    position: sticky; top: 0; background: var(--soot); z-index: 1;
+  }
+  #help-box-header h3 { font-family: 'Cinzel', serif; font-size: 13px; letter-spacing: 2px; color: var(--ember-glow); }
+  #help-close { cursor: pointer; color: var(--smoke); font-size: 20px; line-height: 1; }
+  #help-close:hover { color: var(--ash); }
+  #help-body {
+    padding: 24px 28px; display: flex; flex-direction: column; gap: 28px;
+    font-family: 'Crimson Text', serif; font-size: 15px; color: var(--ash); line-height: 1.65;
+  }
+  .help-section h4 {
+    font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 2px;
+    color: var(--ember); text-transform: uppercase;
+    border-bottom: 1px solid rgba(90,61,26,0.35); padding-bottom: 6px; margin-bottom: 12px;
+  }
+  .help-section p { margin-bottom: 8px; }
+  .help-section p:last-child { margin-bottom: 0; }
+  .help-field {
+    display: grid; grid-template-columns: 160px 1fr; gap: 6px 14px;
+    align-items: baseline; margin-bottom: 6px;
+  }
+  .help-field:last-child { margin-bottom: 0; }
+  .help-key {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: var(--ember-glow); padding-top: 1px;
+  }
+  .help-val { color: var(--ash); }
+  .help-val em { color: var(--smoke); font-style: italic; }
+  .help-note {
+    background: rgba(200,100,20,0.07); border-left: 3px solid var(--ember-dim);
+    padding: 8px 12px; border-radius: 0 2px 2px 0; font-size: 13px;
+    color: var(--smoke); font-style: italic;
+  }
+  .help-tag-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  }
+  .help-tag-card {
+    background: rgba(0,0,0,0.25); border: 1px solid rgba(90,61,26,0.3);
+    border-radius: 3px; padding: 10px 12px;
+  }
+  .help-tag-card .htc-name {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ember-glow);
+    margin-bottom: 4px;
+  }
+  .help-tag-card .htc-fmt {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--smoke);
+    margin-bottom: 6px; word-break: break-all;
+  }
+  .help-tag-card .htc-desc { font-size: 13px; color: var(--ash); }
+
   /* ── TOAST ── */
   #toast {
     position: fixed; bottom: 24px; left: 50%;
@@ -484,6 +550,8 @@
   <button class="tb-btn" onclick="loadSample()">Load Sample</button>
   <div class="tb-sep"></div>
   <button class="tb-btn danger" onclick="deleteSelected()">Delete Node</button>
+  <div style="flex:1"></div>
+  <button class="tb-btn" onclick="openHelp()" style="opacity:0.8;">? Help</button>
 </div>
 
 <div id="main">
@@ -513,6 +581,111 @@
     <div id="export-box-footer">
       <button class="tb-btn" onclick="copyExport()">Copy to Clipboard</button>
       <button class="tb-btn" onclick="closeExport()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="help-panel">
+  <div id="help-box">
+    <div id="help-box-header">
+      <h3>📖 Campfire Tree Editor — Field Reference</h3>
+      <span id="help-close" onclick="closeHelp()">✕</span>
+    </div>
+    <div id="help-body">
+
+      <div class="help-section">
+        <h4>How the Tree Works</h4>
+        <p>The tree is a map of <strong>scene states</strong>. Each state represents a moment around the campfire. The player burns items, and the system checks the current state's <strong>burns</strong> dictionary for a matching entry. If found, dialogue plays and the tree may transition to a new state.</p>
+        <p>Characters don't spawn automatically — the <strong>Attraction System</strong> rolls probability each interval. Only when all <strong>Required Characters</strong> are seated does the current state become active and burns start triggering dialogue.</p>
+        <div class="help-note">States are keyed by their <strong>State ID</strong> in the exported GDScript. Renaming a node after connecting it won't break connections in the editor, but you must keep IDs stable once they're referenced in code.</div>
+      </div>
+
+      <div class="help-section">
+        <h4>Node Fields</h4>
+        <div class="help-field"><span class="help-key">State ID</span><span class="help-val">Auto-generated unique key (e.g. <code>node_3</code>). Used as the dictionary key in the exported GDScript. Cannot be edited — rename the node using Title instead.</span></div>
+        <div class="help-field"><span class="help-key">Title</span><span class="help-val">Human-readable label shown on the node card and in connection destinations. Does not affect runtime logic.</span></div>
+        <div class="help-field"><span class="help-key">Description</span><span class="help-val">Flavour text describing what this scene moment is. Written for your own reference — not exported to the game.</span></div>
+        <div class="help-field"><span class="help-key">Type: Scene</span><span class="help-val">A normal state with burn outcomes and dialogue. The game can transition into and out of it.</span></div>
+        <div class="help-field"><span class="help-key">Type: Terminal</span><span class="help-val">An end state. No burns, no outgoing connections. Characters are dismissed when the tree reaches a terminal node.</span></div>
+      </div>
+
+      <div class="help-section">
+        <h4>Characters</h4>
+        <div class="help-field"><span class="help-key">Required Characters</span><span class="help-val">All of these character IDs must be seated at the fire for this state's burns to trigger dialogue. If any are absent, burns still fire the Attraction System effects but produce no story response.</span></div>
+        <div class="help-field"><span class="help-key">Eligible Pool</span><span class="help-val">Characters that the Attraction System is allowed to spawn during this state. Only characters in this list will roll their probability. Characters not in the list are ignored entirely, even if their probability is high.</span></div>
+        <div class="help-note">A character can be in the Eligible Pool without being Required. This lets optional characters drift in and add ambient flavour without blocking progression.</div>
+      </div>
+
+      <div class="help-section">
+        <h4>Burn Outcomes</h4>
+        <p>Each burn outcome fires when the player burns a matching item at the matching level. The key format is <code>item_id__lv0</code> (exact level) or <code>item_id__lv*</code> (any level). Exact matches take priority over wildcards.</p>
+        <div class="help-field"><span class="help-key">item_id</span><span class="help-val">Must exactly match the <code>burnable_id</code> exported on the Burnable node in Godot.</span></div>
+        <div class="help-field"><span class="help-key">Level</span><span class="help-val">Which burn level triggers this outcome. <code>0</code> = first burn, <code>1</code> = second, etc. Enter <code>*</code> to match any level not covered by an exact entry.</span></div>
+        <div class="help-field"><span class="help-key">Requires Flag</span><span class="help-val">If set, this outcome only triggers its Dialogue if the named flag is <code>true</code> in the progression state. Otherwise the Blocked Dialogue plays instead. Leave empty for no gating.</span></div>
+        <div class="help-field"><span class="help-key">Dialogue</span><span class="help-val">Lines spoken when the burn is recognised and the flag requirement is met (or absent). Played in order, one line per advance.</span></div>
+        <div class="help-field"><span class="help-key">Blocked Dialogue</span><span class="help-val">Lines spoken when the flag requirement is not met. The burn is still recognised — it just plays this alternative response and does not apply Effects or trigger a transition.</span></div>
+        <div class="help-field"><span class="help-key">Effects</span><span class="help-val">Key/value flags set on the progression state when this burn resolves. Use <code>true</code> or <code>false</code>. These flags can gate future burns via Requires Flag.</span></div>
+        <div class="help-field"><span class="help-key">Connection (→)</span><span class="help-val">Drag the <strong>●</strong> port on a burn slot to another node's input port to set the next state. After dialogue finishes, the tree transitions here.</span></div>
+        <div class="help-note">Burns without a connection don't transition — the state stays the same. Useful for ambient reactions that don't advance the story.</div>
+      </div>
+
+      <div class="help-section">
+        <h4>Dialogue Lines</h4>
+        <div class="help-field"><span class="help-key">Character field</span><span class="help-val">The <code>character_id</code> of the speaker. Must match the ID registered via <code>register_character()</code> in Godot. Autocompletes from the node's Eligible Pool.</span></div>
+        <div class="help-field"><span class="help-key">Text field</span><span class="help-val">What the character says. Supports Godot BBCode tags for animated text effects (see below).</span></div>
+        <div class="help-note">Lines play in order. The player must press the advance input to move to the next line. A state transition only fires after the last line is dismissed.</div>
+      </div>
+
+      <div class="help-section">
+        <h4>Fallback (Unrecognised Burn)</h4>
+        <p>Plays when the player burns something that has no matching entry in this state's burns dictionary. Use this to give ambient responses to items you haven't scripted yet, or to give characters a generic reaction that fits the scene's mood.</p>
+        <p>The Attraction System still receives the <code>item_burned_unrecognized</code> signal, so unrecognised burns still shift character probabilities based on item affinity.</p>
+      </div>
+
+      <div class="help-section">
+        <h4>BBCode Animation Tags</h4>
+        <p>Click a tag button above a dialogue line to insert it. Select text first to wrap it, or click with no selection to insert a placeholder. All tags must be closed with the matching <code>[/tag]</code>.</p>
+        <div class="help-tag-grid">
+          <div class="help-tag-card">
+            <div class="htc-name">💓 pulse</div>
+            <div class="htc-fmt">[pulse freq=1.0 color=#ffffff40 ease=-2.0]…[/pulse]</div>
+            <div class="htc-desc">Pulsing opacity/colour. <b>freq</b>: speed (higher = faster). <b>color</b>: target colour multiplier. <b>ease</b>: easing exponent, negative = in-out.</div>
+          </div>
+          <div class="help-tag-card">
+            <div class="htc-name">〜 wave</div>
+            <div class="htc-fmt">[wave amp=50.0 freq=5.0 connected=1]…[/wave]</div>
+            <div class="htc-desc">Text bobs up and down. <b>amp</b>: height of motion. <b>freq</b>: speed (0 or negative = no wave). <b>connected</b>: 1 = ligatures move together.</div>
+          </div>
+          <div class="help-tag-card">
+            <div class="htc-name">🌀 tornado</div>
+            <div class="htc-fmt">[tornado radius=10.0 freq=1.0 connected=1]…[/tornado]</div>
+            <div class="htc-desc">Text orbits in a circle. <b>radius</b>: orbit size. <b>freq</b>: speed (0 = paused, negative = reversed). <b>connected</b>: 1 = ligatures move together.</div>
+          </div>
+          <div class="help-tag-card">
+            <div class="htc-name">⚡ shake</div>
+            <div class="htc-fmt">[shake rate=20.0 level=5 connected=1]…[/shake]</div>
+            <div class="htc-desc">Text shakes randomly. <b>rate</b>: shake speed. <b>level</b>: max offset distance. <b>connected</b>: 1 = ligatures move together.</div>
+          </div>
+          <div class="help-tag-card">
+            <div class="htc-name">🌫 fade</div>
+            <div class="htc-fmt">[fade start=4 length=14]…[/fade]</div>
+            <div class="htc-desc">Static opacity fade. <b>start</b>: character offset where fade begins. <b>length</b>: how many characters the fade covers.</div>
+          </div>
+          <div class="help-tag-card">
+            <div class="htc-name">🌈 rainbow</div>
+            <div class="htc-fmt">[rainbow freq=1.0 sat=0.8 val=0.8 speed=1.0]…[/rainbow]</div>
+            <div class="htc-desc">Cycling rainbow colour. <b>freq</b>: letters per repeat. <b>sat/val</b>: saturation and brightness. <b>speed</b>: cycles/sec (0 = paused, negative = reversed).</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="help-section">
+        <h4>Saving & Exporting</h4>
+        <div class="help-field"><span class="help-key">💾 Save</span><span class="help-val">Downloads <code>campfire_tree.json</code> — a full editor save including node positions, pan/zoom, and all data. Use this to continue editing later.</span></div>
+        <div class="help-field"><span class="help-key">📂 Import</span><span class="help-val">Opens a save file previously created by Save. Also accepts the older Export JSON format.</span></div>
+        <div class="help-field"><span class="help-key">Export GDScript</span><span class="help-val">Generates <code>progression_data.gd</code> — the file your Godot project loads via <code>const DATA = preload(…)</code>. Copy this into your project whenever you update the tree.</span></div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -1484,6 +1657,13 @@ function copyExport() {
   navigator.clipboard.writeText(document.getElementById('export-code').textContent)
     .then(() => toast('Copied to clipboard'));
 }
+
+function openHelp()  { document.getElementById('help-panel').classList.add('open'); }
+function closeHelp() { document.getElementById('help-panel').classList.remove('open'); }
+// Close help on backdrop click
+document.getElementById('help-panel').addEventListener('click', e => {
+  if (e.target === document.getElementById('help-panel')) closeHelp();
+});
 
 // ═══════════════════════════════════════════════════════════
 //  SAMPLE DATA — structured dialogue
