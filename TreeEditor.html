@@ -1,0 +1,1642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Campfire Progression Tree Editor</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --ember:      #e8601c;
+    --ember-dim:  #a03a08;
+    --ember-glow: #ff9a4a;
+    --ash:        #c4b49a;
+    --smoke:      #7a6e63;
+    --soot:       #251e17;
+    --coal:       #0f0c08;
+    --parchment:  #f2e8d5;
+    --node-bg:    #1e1710;
+    --node-border:#5a3d1a;
+    --conn-color: #c87a30;
+    --sel-color:  #ff9a4a;
+    --panel-bg:   #130f09;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--coal);
+    color: var(--ash);
+    font-family: 'Crimson Text', serif;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── TOOLBAR ── */
+  #toolbar {
+    background: var(--panel-bg);
+    border-bottom: 1px solid var(--ember-dim);
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    box-shadow: 0 2px 20px rgba(200,100,20,0.15);
+    z-index: 100;
+  }
+  #toolbar h1 {
+    font-family: 'Cinzel', serif;
+    font-size: 14px;
+    color: var(--ember-glow);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-right: 8px;
+  }
+  .tb-sep { width: 1px; height: 24px; background: var(--node-border); margin: 0 4px; }
+  .tb-btn {
+    background: rgba(90,61,26,0.3);
+    border: 1px solid var(--node-border);
+    color: var(--ash);
+    font-family: 'Crimson Text', serif;
+    font-size: 13px;
+    padding: 4px 14px;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: all 0.15s;
+    letter-spacing: 0.5px;
+  }
+  .tb-btn:hover { background: rgba(200,100,20,0.25); border-color: var(--ember); color: var(--parchment); }
+  .tb-btn.danger { border-color: #7a2020; color: #c05050; }
+  .tb-btn.danger:hover { background: rgba(180,40,40,0.25); color: #ff7070; }
+  #zoom-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--smoke); min-width: 42px; text-align: center; }
+
+  /* ── MAIN LAYOUT ── */
+  #main { display: flex; flex: 1; overflow: hidden; }
+
+  /* ── CANVAS ── */
+  #canvas-wrap {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background: radial-gradient(ellipse at 50% 60%, rgba(200,100,20,0.04) 0%, transparent 65%), var(--coal);
+  }
+  #canvas-wrap::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(90,61,26,0.12) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(90,61,26,0.12) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+  }
+  #canvas-svg {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 3;
+  }
+  #canvas-svg path, #canvas-svg circle {
+    pointer-events: stroke;
+  }
+  #nodes-layer {
+    position: absolute; top: 0; left: 0;
+    transform-origin: 0 0;
+    z-index: 2;
+  }
+
+  /* ── NODE ── */
+  .node {
+    position: absolute;
+    width: 210px;
+    background: var(--node-bg);
+    border: 1px solid var(--node-border);
+    border-radius: 3px;
+    cursor: move;
+    user-select: none;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(200,150,50,0.07);
+    transition: box-shadow 0.15s, border-color 0.15s;
+  }
+  .node:hover { border-color: var(--ember); box-shadow: 0 4px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(200,100,20,0.2); }
+  .node.selected { border-color: var(--sel-color); box-shadow: 0 0 0 2px rgba(255,154,74,0.25), 0 4px 32px rgba(0,0,0,0.6); }
+  .node.terminal-node { border-color: #6a2a2a; }
+
+  .node-header {
+    background: rgba(90,61,26,0.35);
+    padding: 7px 10px 6px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    border-bottom: 1px solid rgba(90,61,26,0.6);
+    border-radius: 2px 2px 0 0;
+  }
+  .node.terminal-node .node-header { background: rgba(90,30,30,0.35); }
+
+  .node-icon { font-size: 14px; line-height: 1; flex-shrink: 0; }
+  .node-title {
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--ember-glow);
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+    flex: 1;
+    text-transform: uppercase;
+  }
+  .node-type-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    padding: 1px 4px;
+    border-radius: 2px;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+  }
+  .badge-terminal { background: rgba(90,30,30,0.5); color: #c87a7a; border: 1px solid rgba(120,50,50,0.5); }
+  .badge-scene    { background: rgba(90,61,26,0.4); color: var(--ember-dim); border: 1px solid rgba(90,61,26,0.6); }
+
+  .node-body { padding: 8px 10px; }
+  .node-desc {
+    font-size: 11px; color: var(--smoke); line-height: 1.4; font-style: italic;
+    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .node-chars {
+    font-size: 10px; color: var(--smoke); margin-top: 4px;
+    font-family: 'JetBrains Mono', monospace; letter-spacing: 0.3px;
+  }
+  .node-burns { margin-top: 7px; display: flex; flex-direction: column; gap: 3px; }
+
+  .burn-slot {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(90,61,26,0.4);
+    border-radius: 2px;
+    padding: 4px 8px 4px 6px;
+    font-size: 11px;
+    transition: border-color 0.12s, background 0.12s;
+    position: relative;
+    cursor: pointer;
+  }
+  .burn-slot:hover { border-color: var(--ember); background: rgba(200,100,20,0.08); }
+  .burn-slot-top { display: flex; align-items: center; gap: 5px; }
+  .burn-slot-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--ember-dim); flex-shrink: 0; transition: background 0.12s;
+  }
+  .burn-slot:hover .burn-slot-dot { background: var(--ember-glow); }
+  .burn-slot.connected .burn-slot-dot { background: var(--conn-color); }
+  .burn-slot-item { color: var(--ash); flex: 1; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+  .burn-slot-lv { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--smoke); flex-shrink: 0; }
+  .burn-slot-dest { font-size: 9px; color: var(--conn-color); font-style: italic; margin-top: 2px; padding-left: 12px; }
+
+  .burn-slot-lines { padding-left: 12px; margin-top: 3px; display: flex; flex-direction: column; gap: 1px; }
+  .burn-slot-line {
+    font-size: 9px; line-height: 1.3; color: var(--smoke);
+    text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
+  }
+  .burn-slot-line .char-tag { color: var(--ember-dim); font-family: 'JetBrains Mono', monospace; font-size: 8px; }
+
+  /* output port */
+  .out-port {
+    position: absolute;
+    right: -9px; top: 12px;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--node-bg);
+    border: 2px solid var(--node-border);
+    cursor: crosshair;
+    transition: border-color 0.12s, background 0.12s;
+    z-index: 10;
+  }
+  .out-port:hover { border-color: var(--ember-glow); background: var(--ember); }
+
+  /* input port */
+  .in-port {
+    position: absolute;
+    left: -9px; top: 50%; transform: translateY(-50%);
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--node-bg);
+    border: 2px solid var(--node-border);
+    cursor: crosshair;
+    z-index: 10;
+    transition: border-color 0.12s;
+  }
+  .in-port:hover { border-color: var(--ember-glow); }
+  .in-port.has-connection { border-color: var(--conn-color); background: rgba(200,122,48,0.25); }
+
+  .fallback-slot {
+    margin-top: 4px;
+    background: rgba(0,0,0,0.2);
+    border: 1px dashed rgba(90,61,26,0.35);
+    border-radius: 2px;
+    padding: 3px 7px;
+  }
+  .fallback-slot-label { font-size: 9px; color: var(--smoke); font-family: 'JetBrains Mono', monospace; letter-spacing: 0.5px; }
+  .fallback-slot-lines { margin-top: 2px; }
+
+  .node-footer {
+    border-top: 1px solid rgba(90,61,26,0.3);
+    padding: 4px 10px;
+    display: flex; gap: 6px; justify-content: flex-end;
+  }
+  .node-footer-btn {
+    font-size: 10px; color: var(--smoke); cursor: pointer;
+    letter-spacing: 0.5px; padding: 1px 4px; border-radius: 2px; transition: color 0.12s;
+  }
+  .node-footer-btn:hover { color: var(--ember-glow); }
+
+  /* ── INSPECTOR ── */
+  #inspector {
+    width: 420px;
+    flex-shrink: 0;
+    background: var(--panel-bg);
+    border-left: 1px solid var(--node-border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #inspector-header {
+    padding: 12px 16px 10px;
+    border-bottom: 1px solid rgba(90,61,26,0.5);
+    background: rgba(90,61,26,0.12);
+  }
+  #inspector-header h2 { font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 2px; color: var(--ember); text-transform: uppercase; }
+  #inspector-body {
+    flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 13px;
+  }
+  #inspector-body::-webkit-scrollbar { width: 4px; }
+  #inspector-body::-webkit-scrollbar-thumb { background: var(--node-border); border-radius: 2px; }
+
+  .field-group { display: flex; flex-direction: column; gap: 4px; }
+  .field-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--smoke); letter-spacing: 1px; text-transform: uppercase; }
+  .field-input {
+    background: rgba(0,0,0,0.4); border: 1px solid var(--node-border);
+    color: var(--parchment); font-family: 'Crimson Text', serif; font-size: 15px;
+    padding: 5px 7px; border-radius: 2px; width: 100%; outline: none; transition: border-color 0.12s;
+  }
+  .field-input:focus { border-color: var(--ember); }
+  textarea.field-input { resize: vertical; min-height: 52px; font-style: italic; }
+
+  .section-title {
+    font-family: 'Cinzel', serif; font-size: 10px; letter-spacing: 1.5px;
+    color: var(--ember-dim); text-transform: uppercase;
+    border-bottom: 1px solid rgba(90,61,26,0.3); padding-bottom: 5px; margin-bottom: 2px;
+  }
+
+  /* Characters */
+  .chars-wrap { display: flex; flex-wrap: wrap; gap: 5px; }
+  .char-pill {
+    background: rgba(40,30,20,0.6); border: 1px solid rgba(90,61,26,0.5);
+    border-radius: 2px; padding: 2px 7px; font-size: 14px;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .char-pill-del { cursor: pointer; color: var(--smoke); font-size: 11px; }
+  .char-pill-del:hover { color: #c05050; }
+  .chars-add-row { display: flex; gap: 5px; margin-top: 4px; }
+  .chars-add-row .field-input { font-size: 14px; padding: 3px 6px; }
+  .chars-add-btn { background: rgba(90,61,26,0.3); border: 1px solid var(--node-border); color: var(--ash); padding: 3px 10px; cursor: pointer; border-radius: 2px; font-size: 14px; flex-shrink: 0; }
+  .chars-add-btn:hover { border-color: var(--ember); color: var(--ember-glow); }
+
+  /* Burns list */
+  .burn-entry {
+    background: rgba(0,0,0,0.25);
+    border: 1px solid rgba(90,61,26,0.35);
+    border-radius: 3px;
+    padding: 9px 9px 7px;
+    display: flex; flex-direction: column; gap: 7px;
+    position: relative;
+  }
+  .burn-entry-del { position: absolute; top: 7px; right: 8px; cursor: pointer; color: var(--smoke); font-size: 13px; }
+  .burn-entry-del:hover { color: #c05050; }
+  .burn-entry-row { display: flex; gap: 6px; }
+  .burn-entry .field-input { font-size: 14px; padding: 4px 6px; }
+
+  /* Dialogue block */
+  .dialogue-block {
+    background: rgba(0,0,0,0.2);
+    border: 1px solid rgba(90,61,26,0.25);
+    border-radius: 2px;
+    padding: 6px 7px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .dialogue-block-header {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px;
+    color: var(--smoke); letter-spacing: 0.8px; text-transform: uppercase;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .dialogue-block-header .add-line-btn {
+    cursor: pointer; color: var(--ember-dim); transition: color 0.1s; font-size: 10px;
+  }
+  .dialogue-block-header .add-line-btn:hover { color: var(--ember-glow); }
+
+  .dialogue-line-entry {
+    display: flex; gap: 5px; align-items: flex-start;
+  }
+  .dialogue-line-char {
+    background: rgba(0,0,0,0.4); border: 1px solid var(--node-border);
+    color: var(--ash); font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    padding: 3px 5px; border-radius: 2px; outline: none; flex-shrink: 0; width: 96px;
+    transition: border-color 0.12s;
+  }
+  .dialogue-line-char:focus { border-color: var(--ember); }
+  .dialogue-line-text {
+    background: rgba(0,0,0,0.35); border: 1px solid var(--node-border);
+    color: var(--parchment); font-family: 'Crimson Text', serif; font-size: 14px;
+    font-style: italic; padding: 3px 6px; border-radius: 2px; outline: none;
+    flex: 1; resize: none; min-height: 36px; transition: border-color 0.12s; line-height: 1.4;
+  }
+  .dialogue-line-text:focus { border-color: var(--ember); }
+  .dialogue-line-del {
+    color: var(--smoke); cursor: pointer; font-size: 12px; padding-top: 4px; flex-shrink: 0;
+  }
+  .dialogue-line-del:hover { color: #c05050; }
+  .dialogue-empty { font-size: 11px; color: var(--smoke); font-style: italic; padding: 1px 0; }
+
+  /* Effects */
+  .effects-list { display: flex; flex-direction: column; gap: 4px; }
+  .effect-entry { display: flex; gap: 5px; align-items: center; }
+  .effect-key {
+    background: rgba(0,0,0,0.4); border: 1px solid var(--node-border);
+    color: var(--parchment); font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    padding: 3px 5px; border-radius: 2px; outline: none; flex: 1; transition: border-color 0.12s;
+  }
+  .effect-key:focus { border-color: var(--ember); }
+  .effect-val {
+    background: rgba(0,0,0,0.4); border: 1px solid var(--node-border);
+    color: var(--ash); font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    padding: 3px 4px; border-radius: 2px; outline: none; flex-shrink: 0; width: 60px;
+  }
+  .effect-del { color: var(--smoke); cursor: pointer; font-size: 12px; flex-shrink: 0; }
+  .effect-del:hover { color: #c05050; }
+
+  .add-btn {
+    background: rgba(90,61,26,0.15); border: 1px dashed rgba(90,61,26,0.45);
+    color: var(--smoke); font-family: 'Crimson Text', serif; font-size: 12px;
+    padding: 4px; cursor: pointer; border-radius: 2px; text-align: center;
+    transition: all 0.12s; letter-spacing: 0.5px;
+  }
+  .add-btn:hover { border-color: var(--ember); color: var(--ember-glow); background: rgba(200,100,20,0.08); }
+
+  /* ── BBCODE TAG BUTTONS ── */
+  .bbcode-bar {
+    display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 3px;
+  }
+  .bbcode-btn {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    padding: 2px 7px; border-radius: 2px; cursor: pointer;
+    border: 1px solid rgba(90,61,26,0.5);
+    background: rgba(20,15,8,0.7); color: var(--smoke);
+    transition: all 0.12s; white-space: nowrap; position: relative;
+  }
+  .bbcode-btn:hover { color: var(--ember-glow); border-color: var(--ember); background: rgba(200,100,20,0.1); }
+
+  /* Tooltip */
+  .bbcode-tip {
+    display: none;
+    position: fixed;
+    z-index: 9000;
+    background: #1a1208;
+    border: 1px solid var(--ember-dim);
+    border-radius: 3px;
+    padding: 9px 12px;
+    width: 280px;
+    font-family: 'Crimson Text', serif;
+    font-size: 12px;
+    color: var(--ash);
+    line-height: 1.55;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+    pointer-events: none;
+  }
+  .bbcode-tip.visible { display: block; }
+  .bbcode-tip-tag {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: var(--ember-glow); display: block; margin-bottom: 6px;
+    word-break: break-all;
+  }
+  .bbcode-tip-param { margin-top: 4px; }
+  .bbcode-tip-param b { color: var(--parchment); font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+
+  #empty-inspector { color: var(--smoke); font-size: 13px; font-style: italic; text-align: center; padding: 30px 16px; line-height: 1.7; }
+
+  /* ── EXPORT PANEL ── */
+  #export-panel {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+    display: none; align-items: center; justify-content: center; z-index: 1000;
+  }
+  #export-panel.open { display: flex; }
+  #export-box {
+    background: var(--soot); border: 1px solid var(--node-border); border-radius: 4px;
+    width: min(720px, 92vw); max-height: 82vh;
+    display: flex; flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+  }
+  #export-box-header {
+    padding: 12px 16px; border-bottom: 1px solid var(--node-border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #export-box-header h3 { font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 2px; color: var(--ember-glow); }
+  #export-close { cursor: pointer; color: var(--smoke); font-size: 18px; }
+  #export-close:hover { color: var(--ash); }
+  #export-code {
+    flex: 1; overflow-y: auto; padding: 14px 16px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #d4c4a8;
+    line-height: 1.6; white-space: pre; background: rgba(0,0,0,0.3);
+  }
+  #export-code::-webkit-scrollbar { width: 4px; }
+  #export-code::-webkit-scrollbar-thumb { background: var(--node-border); }
+  #export-box-footer { padding: 10px 16px; border-top: 1px solid var(--node-border); display: flex; justify-content: flex-end; gap: 8px; }
+
+  /* ── CONNECTING LINE ── */
+  #connecting-line { position: fixed; top: 0; left: 0; pointer-events: none; z-index: 9999; }
+
+  /* ── TOAST ── */
+  #toast {
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(60px);
+    background: rgba(30,23,16,0.95); border: 1px solid var(--ember);
+    color: var(--parchment); font-family: 'Crimson Text', serif; font-size: 14px;
+    padding: 7px 18px; border-radius: 2px;
+    transition: transform 0.25s ease; z-index: 2000; pointer-events: none;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <h1>🔥 Campfire Tree</h1>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" onclick="addNode('scene')">+ Scene Node</button>
+  <button class="tb-btn" onclick="addNode('terminal')">+ Terminal</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" onclick="zoomBy(-0.1)">−</button>
+  <span id="zoom-label">100%</span>
+  <button class="tb-btn" onclick="zoomBy(0.1)">+</button>
+  <button class="tb-btn" onclick="resetView()">Reset View</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" onclick="exportGDScript()">Export GDScript</button>
+  <button class="tb-btn" onclick="saveJSON()">💾 Save</button>
+  <button class="tb-btn" onclick="triggerImport()">📂 Import</button>
+  <input type="file" id="import-file-input" accept=".json" style="display:none" onchange="importJSON(event)">
+  <button class="tb-btn" onclick="loadSample()">Load Sample</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn danger" onclick="deleteSelected()">Delete Node</button>
+</div>
+
+<div id="main">
+  <div id="canvas-wrap">
+    <svg id="canvas-svg"></svg>
+    <div id="nodes-layer"></div>
+  </div>
+  <div id="inspector">
+    <div id="inspector-header"><h2>Inspector</h2></div>
+    <div id="inspector-body">
+      <div id="empty-inspector">Select a node to edit.<br><br>Drag the ● port on a burn slot to connect it to another node.</div>
+    </div>
+  </div>
+</div>
+
+<svg id="connecting-line" width="0" height="0">
+  <path id="conn-path" fill="none" stroke="#ff9a4a" stroke-width="2" stroke-dasharray="5 3" opacity="0.7"/>
+</svg>
+
+<div id="export-panel">
+  <div id="export-box">
+    <div id="export-box-header">
+      <h3 id="export-title">EXPORT</h3>
+      <span id="export-close" onclick="closeExport()">✕</span>
+    </div>
+    <div id="export-code"></div>
+    <div id="export-box-footer">
+      <button class="tb-btn" onclick="copyExport()">Copy to Clipboard</button>
+      <button class="tb-btn" onclick="closeExport()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="bbcode-tip" class="bbcode-tip"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════
+function emptyLine(char='') { return { character: char, text: '' }; }
+function escHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  BBCODE TAGS
+// ═══════════════════════════════════════════════════════════
+const BBCODE_TAGS = [
+  {
+    name: 'pulse',
+    insert: '[pulse freq=1.0 color=#ffffff40 ease=-2.0]',
+    close: '[/pulse]',
+    label: '💓 pulse',
+    desc: 'Animated pulsing — multiplies opacity and color of each character.',
+    params: [
+      { name: 'freq', desc: 'Speed of each half-pulse. Higher = faster. Full cycle = 2×(1/freq) sec.' },
+      { name: 'color', desc: 'Target color multiplier for the blink (default fades text without fully hiding it).' },
+      { name: 'ease', desc: 'Easing exponent. Negative gives in-out easing (default -2.0).' },
+    ]
+  },
+  {
+    name: 'wave',
+    insert: '[wave amp=50.0 freq=5.0 connected=1]',
+    close: '[/wave]',
+    label: '〜 wave',
+    desc: 'Makes text bob up and down.',
+    params: [
+      { name: 'amp', desc: 'How high/low the text moves.' },
+      { name: 'freq', desc: 'How fast it waves. 0 or negative = no waves.' },
+      { name: 'connected', desc: '1 = ligature glyphs move together (default). 0 = each glyph moves independently.' },
+    ]
+  },
+  {
+    name: 'tornado',
+    insert: '[tornado radius=10.0 freq=1.0 connected=1]',
+    close: '[/tornado]',
+    label: '🌀 tornado',
+    desc: 'Text orbits in a circle.',
+    params: [
+      { name: 'radius', desc: 'Radius of the circular orbit.' },
+      { name: 'freq', desc: 'Orbit speed. 0 = paused, negative = reversed.' },
+      { name: 'connected', desc: '1 = ligature glyphs move together (default). 0 = independently.' },
+    ]
+  },
+  {
+    name: 'shake',
+    insert: '[shake rate=20.0 level=5 connected=1]',
+    close: '[/shake]',
+    label: '⚡ shake',
+    desc: 'Text shakes randomly.',
+    params: [
+      { name: 'rate', desc: 'How fast the shaking happens.' },
+      { name: 'level', desc: 'How far from origin each character can offset.' },
+      { name: 'connected', desc: '1 = ligature glyphs move together (default). 0 = independently.' },
+    ]
+  },
+  {
+    name: 'fade',
+    insert: '[fade start=4 length=14]',
+    close: '[/fade]',
+    label: '🌫 fade',
+    desc: 'Static fade — multiplies opacity over a range of characters.',
+    params: [
+      { name: 'start', desc: 'Starting position of the fade relative to the tag insertion point.' },
+      { name: 'length', desc: 'How many characters the fade spans.' },
+    ]
+  },
+  {
+    name: 'rainbow',
+    insert: '[rainbow freq=1.0 sat=0.8 val=0.8 speed=1.0]',
+    close: '[/rainbow]',
+    label: '🌈 rainbow',
+    desc: 'Cycling rainbow colour. Overrides existing font colours.',
+    params: [
+      { name: 'freq', desc: 'How many letters before the rainbow repeats.' },
+      { name: 'sat', desc: 'Saturation of the rainbow (0–1).' },
+      { name: 'val', desc: 'Value/brightness of the rainbow (0–1).' },
+      { name: 'speed', desc: 'Cycles per second. 0 = paused, negative = reversed.' },
+    ]
+  },
+];
+
+const _tip = document.getElementById('bbcode-tip');
+
+function bbcodeShowTip(tag, btnEl) {
+  const rect = btnEl.getBoundingClientRect();
+  const paramsHTML = tag.params.map(p =>
+    `<div class="bbcode-tip-param"><b>${p.name}</b> — ${p.desc}</div>`
+  ).join('');
+  _tip.innerHTML = `<span class="bbcode-tip-tag">${tag.insert}…${tag.close}</span>${tag.desc}${paramsHTML}`;
+  _tip.classList.add('visible');
+  // Position above the button, or below if near top
+  const tipH = 200; // rough estimate before render
+  let top = rect.top - tipH - 8;
+  if (top < 8) top = rect.bottom + 8;
+  let left = rect.left;
+  if (left + 284 > window.innerWidth) left = window.innerWidth - 292;
+  _tip.style.top = top + 'px';
+  _tip.style.left = left + 'px';
+  // Reposition after actual render
+  requestAnimationFrame(() => {
+    const actualH = _tip.offsetHeight;
+    let t = rect.top - actualH - 8;
+    if (t < 8) t = rect.bottom + 8;
+    _tip.style.top = t + 'px';
+  });
+}
+
+function bbcodeHideTip() {
+  _tip.classList.remove('visible');
+}
+
+function bbcodeInsert(tagName, textareaEl) {
+  const tag = BBCODE_TAGS.find(t => t.name === tagName);
+  if (!tag || !textareaEl) return;
+  const start = textareaEl.selectionStart;
+  const end   = textareaEl.selectionEnd;
+  const val   = textareaEl.value;
+  const sel   = val.slice(start, end);
+  const replacement = tag.insert + (sel || 'text') + tag.close;
+  textareaEl.value = val.slice(0, start) + replacement + val.slice(end);
+  // Move cursor inside the tags if no selection, else after closing tag
+  const newCursor = sel
+    ? start + replacement.length
+    : start + tag.insert.length;
+  textareaEl.selectionStart = textareaEl.selectionEnd = newCursor;
+  textareaEl.dispatchEvent(new Event('input'));
+  textareaEl.focus();
+}
+
+function bbcodeBarHTML(textareaId) {
+  return `<div class="bbcode-bar">${BBCODE_TAGS.map(t =>
+    `<button class="bbcode-btn"
+      onmouseenter="bbcodeShowTip(BBCODE_TAGS.find(x=>x.name==='${t.name}'),this)"
+      onmouseleave="bbcodeHideTip()"
+      onclick="bbcodeInsert('${t.name}',document.getElementById('${textareaId}'))"
+    >${t.label}</button>`
+  ).join('')}</div>`;
+}
+let nodes = {};
+let connections = [];   // { from_node, from_burn_index, to_node }
+let selectedId = null;
+let nodeCounter = 0;
+let pan = { x: 60, y: 60 };
+let zoom = 1;
+let dragging = null;
+let connectingFrom = null;
+
+const canvasWrap  = document.getElementById('canvas-wrap');
+const nodesLayer  = document.getElementById('nodes-layer');
+const svg         = document.getElementById('canvas-svg');
+
+// ═══════════════════════════════════════════════════════════
+//  NODE MODEL
+// ═══════════════════════════════════════════════════════════
+function makeNode(type='scene', x=200, y=200) {
+  const id = 'node_' + (++nodeCounter);
+  return {
+    id, type, x, y,
+    title: type === 'terminal' ? 'Terminal' : 'New Scene',
+    description: '',
+    required_characters: [],  // must all be seated to unlock burns
+    characters: [],           // eligible pool for attraction system
+    burns: type === 'terminal' ? [] : [makeBurn()],
+    unrecognised_dialogue: [],
+  };
+}
+
+function makeBurn(firstChar='') {
+  return {
+    item_id: '', level: 0,
+    dialogue: firstChar ? [emptyLine(firstChar)] : [],
+    blocked_dialogue: [],
+    requires: '',
+    effects: {},
+  };
+}
+
+// ═══════════════════════════════════════════════════════════
+//  RENDER NODE CARD
+// ═══════════════════════════════════════════════════════════
+function linesPreview(lines, max=2) {
+  if (!lines || !lines.length) return '';
+  const shown = lines.slice(0, max).map(l =>
+    `<div class="burn-slot-line"><span class="char-tag">[${escHtml(l.character)||'?'}]</span> ${escHtml(l.text)}</div>`
+  ).join('');
+  const more = lines.length > max ? `<div class="burn-slot-line" style="color:var(--ember-dim)">+${lines.length-max} more…</div>` : '';
+  return shown + more;
+}
+
+function renderNode(n) {
+  let el = document.getElementById(n.id);
+  if (!el) {
+    el = document.createElement('div');
+    el.id = n.id;
+    nodesLayer.appendChild(el);
+    attachNodeEvents(el, n.id);
+  }
+
+  const isTerminal = n.type === 'terminal';
+  el.className = 'node' + (n.id === selectedId ? ' selected' : '') + (isTerminal ? ' terminal-node' : '');
+  el.style.left = n.x + 'px';
+  el.style.top  = n.y + 'px';
+
+  const charsStr = n.characters.join(', ');
+  const charsHTML = charsStr ? `<div class="node-chars">👤 ${escHtml(charsStr)}</div>` : '';
+  const reqStr = n.required_characters && n.required_characters.length ? n.required_characters.join(', ') : '';
+  const reqHTML = reqStr ? `<div class="node-chars" style="color:var(--ember-dim)">🔒 ${escHtml(reqStr)}</div>` : '';
+
+  const burnsHTML = isTerminal
+    ? '<div style="font-size:10px;color:var(--smoke);font-style:italic;padding:2px 0;">No outgoing paths.</div>'
+    : n.burns.map((b, i) => {
+        const conn = connections.find(c => c.from_node === n.id && c.from_burn_index === i);
+        const label = b.item_id ? escHtml(b.item_id) : '<em style="color:var(--smoke)">unset</em>';
+        const lvLabel = b.level === '*' ? 'lv*' : `lv${b.level}`;
+        const dest  = conn ? `<div class="burn-slot-dest">→ ${escHtml(nodes[conn.to_node]?.title||'?')}</div>` : '';
+        const dlPrev = linesPreview(b.dialogue);
+        return `
+        <div class="burn-slot ${conn?'connected':''}" data-burn="${i}">
+          <div class="out-port" data-node="${n.id}" data-burn="${i}"></div>
+          <div class="burn-slot-top">
+            <div class="burn-slot-dot"></div>
+            <div class="burn-slot-item">${label}</div>
+            <div class="burn-slot-lv">${lvLabel}</div>
+          </div>
+          ${dlPrev ? `<div class="burn-slot-lines">${dlPrev}</div>` : ''}
+          ${dest}
+        </div>`;
+      }).join('');
+
+  const fbPrev = linesPreview(n.unrecognised_dialogue);
+  const fallbackHTML = !isTerminal ? `
+    <div class="fallback-slot">
+      <div class="fallback-slot-label">FALLBACK</div>
+      <div class="fallback-slot-lines">${fbPrev || '<span style="font-size:9px;color:var(--smoke);font-style:italic;">no fallback</span>'}</div>
+    </div>` : '';
+
+  el.innerHTML = `
+    <div class="in-port ${connections.some(c=>c.to_node===n.id)?'has-connection':''}"></div>
+    <div class="node-header">
+      <span class="node-icon">${isTerminal?'💀':'🔥'}</span>
+      <span class="node-title">${escHtml(n.title)||'Unnamed'}</span>
+      <span class="node-type-badge ${isTerminal?'badge-terminal':'badge-scene'}">${isTerminal?'TERMINAL':'SCENE'}</span>
+    </div>
+    <div class="node-body">
+      <div class="node-desc">${escHtml(n.description)||'<em>no description</em>'}</div>
+      ${reqHTML}
+      ${charsHTML}
+      <div class="node-burns">${burnsHTML}</div>
+      ${fallbackHTML}
+    </div>
+    <div class="node-footer">
+      ${!isTerminal?`<span class="node-footer-btn" onclick="addBurnToNode('${n.id}')">+ burn</span>`:''}
+      <span class="node-footer-btn" onclick="deleteNode('${n.id}')">✕</span>
+    </div>`;
+
+  el.querySelectorAll('.out-port').forEach(p => {
+    p.addEventListener('mousedown', e => startConnect(e, p.dataset.node, parseInt(p.dataset.burn)));
+  });
+  el.querySelector('.in-port').addEventListener('mouseup', e => endConnect(e, n.id));
+}
+
+function renderAll() {
+  Object.values(nodes).forEach(renderNode);
+  drawConnections();
+}
+
+function applyTransform() {
+  nodesLayer.style.transform = `translate(${pan.x}px,${pan.y}px) scale(${zoom})`;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  CONNECTIONS
+// ═══════════════════════════════════════════════════════════
+function drawConnections() {
+  svg.innerHTML = '';
+  const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+  defs.innerHTML = `<filter id="glow"><feGaussianBlur stdDeviation="1.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
+  svg.appendChild(defs);
+
+  // The SVG covers canvas-wrap in screen space (no transform).
+  // getBoundingClientRect on ports gives screen coords.
+  // We subtract canvas-wrap's top-left to get SVG-local coords.
+  const wr = canvasWrap.getBoundingClientRect();
+
+  connections.forEach((conn, idx) => {
+    const fromEl = document.getElementById(conn.from_node);
+    const toEl   = document.getElementById(conn.to_node);
+    if (!fromEl || !toEl) return;
+
+    const slots   = fromEl.querySelectorAll('.burn-slot');
+    const outPort = slots[conn.from_burn_index]?.querySelector('.out-port');
+    const inPort  = toEl.querySelector('.in-port');
+    if (!outPort || !inPort) return;
+
+    // getBoundingClientRect gives true screen position of the port elements,
+    // which are already positioned by the CSS transform on nodes-layer.
+    // Subtracting wr.left/top maps into the SVG's coordinate space.
+    const fr = outPort.getBoundingClientRect();
+    const tr = inPort.getBoundingClientRect();
+    const x1 = fr.left + fr.width  / 2 - wr.left;
+    const y1 = fr.top  + fr.height / 2 - wr.top;
+    const x2 = tr.left + tr.width  / 2 - wr.left;
+    const y2 = tr.top  + tr.height / 2 - wr.top;
+
+    const cx = Math.abs(x2 - x1) * 0.5 + 40;
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d', `M${x1},${y1} C${x1+cx},${y1} ${x2-cx},${y2} ${x2},${y2}`);
+    path.setAttribute('fill','none');
+    path.setAttribute('stroke','#c87a30');
+    path.setAttribute('stroke-width','2');
+    path.setAttribute('opacity','0.7');
+    path.setAttribute('filter','url(#glow)');
+    path.style.cursor = 'pointer';
+    path.style.pointerEvents = 'stroke';
+    path.addEventListener('click', () => {
+      if (confirm('Remove this connection?')) { connections.splice(idx, 1); renderAll(); }
+    });
+    svg.appendChild(path);
+
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+    const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    dot.setAttribute('cx', mx); dot.setAttribute('cy', my);
+    dot.setAttribute('r','3.5'); dot.setAttribute('fill','#e8601c'); dot.setAttribute('opacity','0.9');
+    svg.appendChild(dot);
+  });
+}
+
+// ── Port connecting ─────────────────────────────────────────
+const connPath = document.getElementById('conn-path');
+const connSvg  = document.getElementById('connecting-line');
+
+function startConnect(e, nodeId, burnIdx) {
+  e.stopPropagation(); e.preventDefault();
+  connectingFrom = { nodeId, burnIdx };
+  connSvg.style.width  = window.innerWidth  + 'px';
+  connSvg.style.height = window.innerHeight + 'px';
+  const r = e.target.getBoundingClientRect();
+  const sx = r.left + r.width/2, sy = r.top + r.height/2;
+  function onMove(ev) {
+    const dx = Math.abs(ev.clientX-sx)*0.5+20;
+    connPath.setAttribute('d',`M${sx},${sy} C${sx+dx},${sy} ${ev.clientX-dx},${ev.clientY} ${ev.clientX},${ev.clientY}`);
+  }
+  function onUp() {
+    connSvg.style.width='0'; connSvg.style.height='0'; connPath.setAttribute('d','');
+    connectingFrom=null;
+    window.removeEventListener('mousemove',onMove); window.removeEventListener('mouseup',onUp);
+  }
+  window.addEventListener('mousemove',onMove);
+  window.addEventListener('mouseup',onUp);
+}
+
+function endConnect(e, toNodeId) {
+  if (!connectingFrom || connectingFrom.nodeId === toNodeId) return;
+  connections = connections.filter(c => !(c.from_node===connectingFrom.nodeId && c.from_burn_index===connectingFrom.burnIdx));
+  connections.push({ from_node:connectingFrom.nodeId, from_burn_index:connectingFrom.burnIdx, to_node:toNodeId });
+  connectingFrom = null;
+  renderAll();
+  toast('Connection made');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  DRAG / PAN / ZOOM
+// ═══════════════════════════════════════════════════════════
+function attachNodeEvents(el, id) {
+  el.addEventListener('mousedown', e => {
+    const t = e.target;
+    if (t.classList.contains('out-port') || t.classList.contains('in-port') || t.classList.contains('node-footer-btn')) return;
+    selectNode(id);
+    dragging = { id, startX:e.clientX, startY:e.clientY, nodeX:nodes[id].x, nodeY:nodes[id].y };
+    e.preventDefault();
+  });
+}
+window.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  nodes[dragging.id].x = dragging.nodeX + (e.clientX-dragging.startX)/zoom;
+  nodes[dragging.id].y = dragging.nodeY + (e.clientY-dragging.startY)/zoom;
+  const el = document.getElementById(dragging.id);
+  el.style.left = nodes[dragging.id].x+'px'; el.style.top = nodes[dragging.id].y+'px';
+  drawConnections();
+});
+window.addEventListener('mouseup', () => { dragging=null; });
+
+let panning=false, panStart={};
+canvasWrap.addEventListener('mousedown', e => {
+  // Middle mouse button always pans
+  const isMiddle = e.button === 1;
+  // Left click on the bare canvas background pans
+  const isBackground = e.button === 0 && (e.target === canvasWrap || e.target === nodesLayer || e.target === svg);
+  if (!isMiddle && !isBackground) return;
+  if (isMiddle) e.preventDefault(); // prevent scroll-click autoscroll
+  selectNode(null);
+  panning=true; panStart={x:e.clientX,y:e.clientY,px:pan.x,py:pan.y};
+});
+window.addEventListener('mousemove', e => {
+  if (!panning) return;
+  pan.x=panStart.px+(e.clientX-panStart.x); pan.y=panStart.py+(e.clientY-panStart.y);
+  applyTransform(); drawConnections();
+});
+window.addEventListener('mouseup', () => { panning=false; });
+canvasWrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoom = Math.max(0.2,Math.min(3, zoom*(e.deltaY<0?1.08:0.92)));
+  document.getElementById('zoom-label').textContent = Math.round(zoom*100)+'%';
+  applyTransform(); drawConnections();
+}, {passive:false});
+
+// ═══════════════════════════════════════════════════════════
+//  SELECTION & INSPECTOR
+// ═══════════════════════════════════════════════════════════
+function selectNode(id) {
+  selectedId = id;
+  Object.values(nodes).forEach(n => {
+    const el = document.getElementById(n.id);
+    if (el) el.className = 'node'+(n.id===selectedId?' selected':'')+(n.type==='terminal'?' terminal-node':'');
+  });
+  renderInspector();
+}
+
+// ── Inspector render ───────────────────────────────────────
+function renderInspector() {
+  const body = document.getElementById('inspector-body');
+  if (!selectedId || !nodes[selectedId]) {
+    body.innerHTML = '<div id="empty-inspector">Select a node to edit.<br><br>Drag the ● port on a burn slot to connect it to another node.</div>';
+    return;
+  }
+  const n = nodes[selectedId];
+
+  const charsHTML = `
+    <div class="chars-wrap">${n.characters.map((c,i)=>`
+      <div class="char-pill">
+        <span>${escHtml(c)}</span>
+        <span class="char-pill-del" onclick="removeChar('${n.id}','characters',${i})">✕</span>
+      </div>`).join('')}
+    </div>
+    <div class="chars-add-row">
+      <input class="field-input" id="new-char-inp" placeholder="character_id" onkeydown="if(event.key==='Enter')addChar('${n.id}','characters')">
+      <button class="chars-add-btn" onclick="addChar('${n.id}','characters')">Add</button>
+    </div>`;
+
+  const reqCharsHTML = `
+    <div class="chars-wrap">${(n.required_characters||[]).map((c,i)=>`
+      <div class="char-pill" style="border-color:rgba(168,60,8,0.5)">
+        <span>${escHtml(c)}</span>
+        <span class="char-pill-del" onclick="removeChar('${n.id}','required_characters',${i})">✕</span>
+      </div>`).join('')}
+    </div>
+    <div class="chars-add-row">
+      <input class="field-input" id="new-req-char-inp" placeholder="character_id" onkeydown="if(event.key==='Enter')addChar('${n.id}','required_characters')">
+      <button class="chars-add-btn" onclick="addChar('${n.id}','required_characters')">Add</button>
+    </div>`;
+
+  // datalist for autocomplete in dialogue char fields
+  const datalist = `<datalist id="char-suggestions">${n.characters.map(c=>`<option value="${escHtml(c)}">`).join('')}</datalist>`;
+
+  const burnsHTML = n.type==='terminal'
+    ? '<div style="color:var(--smoke);font-size:12px;font-style:italic;">Terminal nodes have no burns.</div>'
+    : `<div id="burns-list">${n.burns.map((b,i)=>burnEntryHTML(b,i,n.id)).join('')}</div>
+       <div class="add-btn" onclick="addBurnEntry('${n.id}')">+ Add Burn Outcome</div>`;
+
+  const fallbackHTML = n.type!=='terminal' ? `
+    <div class="section-title">Fallback (Unrecognised Burn)</div>
+    ${dialogueBlockHTML(n.unrecognised_dialogue,'unrec',n.id,`addDialogueLine('${n.id}','unrec',-1)`)}` : '';
+
+  body.innerHTML = `
+    ${datalist}
+    <div class="section-title">Identity</div>
+    <div class="field-group">
+      <label class="field-label">State ID</label>
+      <input class="field-input" value="${escHtml(n.id)}" readonly style="color:var(--smoke)">
+    </div>
+    <div class="field-group">
+      <label class="field-label">Title</label>
+      <input class="field-input" value="${escHtml(n.title)}" oninput="updateField('${n.id}','title',this.value)">
+    </div>
+    <div class="field-group">
+      <label class="field-label">Description</label>
+      <textarea class="field-input" oninput="updateField('${n.id}','description',this.value)">${escHtml(n.description)}</textarea>
+    </div>
+
+    <div class="section-title">Required Characters <span style="font-size:8px;color:var(--smoke);letter-spacing:0px;font-family:'Crimson Text',serif;text-transform:none;font-weight:normal;">all must be seated to unlock burns</span></div>
+    ${n.type==='terminal' ? '<div style="color:var(--smoke);font-size:12px;font-style:italic;">N/A</div>' : reqCharsHTML}
+
+    <div class="section-title">Eligible Pool <span style="font-size:8px;color:var(--smoke);letter-spacing:0px;font-family:'Crimson Text',serif;text-transform:none;font-weight:normal;">attraction system draws from these</span></div>
+    ${charsHTML}
+
+    <div class="section-title">Burn Outcomes</div>
+    ${burnsHTML}
+
+    ${fallbackHTML}
+  `;
+}
+
+// ── Dialogue block HTML ────────────────────────────────────
+// scope: 'burn' → burn_nodeId_burnIdx_dl | burn_nodeId_burnIdx_bl
+//        'unrec' → unrec_nodeId
+function dialogueBlockHTML(lines, scope, nodeId, addFnCall) {
+  const linesHTML = (lines||[]).map((l, li) => {
+    const taId = `dlt_${scope}_${nodeId}_${li}`.replace(/[^a-zA-Z0-9_]/g,'_');
+    return `
+    <div class="dialogue-line-entry" style="flex-direction:column;gap:3px;">
+      <div style="display:flex;gap:5px;align-items:center;">
+        <input class="dialogue-line-char" value="${escHtml(l.character)}" placeholder="who"
+               list="char-suggestions"
+               oninput="updateLineField(this,'${scope}','${nodeId}',${li},'character')">
+        <span class="dialogue-line-del" onclick="removeLine('${scope}','${nodeId}',${li})">✕</span>
+      </div>
+      ${bbcodeBarHTML(taId)}
+      <textarea id="${taId}" class="dialogue-line-text" placeholder="What they say…"
+                oninput="updateLineField(this,'${scope}','${nodeId}',${li},'text')">${escHtml(l.text)}</textarea>
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="dialogue-block">
+      <div class="dialogue-block-header">
+        <span>LINES</span>
+        <span class="add-line-btn" onclick="${addFnCall}">+ line</span>
+      </div>
+      ${linesHTML || '<div class="dialogue-empty">No lines yet.</div>'}
+    </div>`;
+}
+
+// ── Burn entry HTML ────────────────────────────────────────
+function burnEntryHTML(b, i, nodeId) {
+  const conn = connections.find(c => c.from_node===nodeId && c.from_burn_index===i);
+  const destStr = conn ? `→ ${escHtml(nodes[conn.to_node]?.title||'?')}` : 'not connected — drag ● port on canvas';
+
+  const effectsHTML = Object.entries(b.effects).map(([k,v],ei) => `
+    <div class="effect-entry">
+      <input class="effect-key" value="${escHtml(k)}" placeholder="flag_name"
+             oninput="updateEffectKey('${nodeId}',${i},${ei},this.value)">
+      <select class="effect-val" onchange="updateEffectVal('${nodeId}',${i},${ei},this.value)">
+        <option value="true"  ${v===true?'selected':''}>true</option>
+        <option value="false" ${v===false?'selected':''}>false</option>
+      </select>
+      <span class="effect-del" onclick="removeEffect('${nodeId}',${i},${ei})">✕</span>
+    </div>`).join('');
+
+  return `
+  <div class="burn-entry">
+    <span class="burn-entry-del" onclick="removeBurn('${nodeId}',${i})">✕</span>
+
+    <div class="burn-entry-row">
+      <div class="field-group" style="flex:2">
+        <label class="field-label">item_id</label>
+        <input class="field-input" value="${escHtml(b.item_id)}" placeholder="e.g. the_letter"
+               oninput="updateBurn('${nodeId}',${i},'item_id',this.value)">
+      </div>
+      <div class="field-group" style="flex:1">
+        <label class="field-label">Level</label>
+        <input class="field-input" value="${escHtml(String(b.level))}" placeholder="0 or *"
+               oninput="updateBurn('${nodeId}',${i},'level',this.value==='*'?'*':(parseInt(this.value)||0))">
+      </div>
+    </div>
+
+    <div class="field-group">
+      <label class="field-label">Requires Flag <span style="color:var(--smoke);font-size:8px;">(leave empty for none)</span></label>
+      <input class="field-input" value="${escHtml(b.requires)}" placeholder="flag_name"
+             oninput="updateBurn('${nodeId}',${i},'requires',this.value)">
+    </div>
+
+    <div class="field-group">
+      <label class="field-label">Dialogue</label>
+      ${dialogueBlockHTML(b.dialogue,'burn_dl',`${nodeId}_${i}`,`addDialogueLine('${nodeId}','burn_dl',${i})`)}
+    </div>
+
+    <div class="field-group">
+      <label class="field-label">Blocked Dialogue <span style="color:var(--smoke);font-size:8px;">(requires flag not met)</span></label>
+      ${dialogueBlockHTML(b.blocked_dialogue,'burn_bl',`${nodeId}_${i}`,`addDialogueLine('${nodeId}','burn_bl',${i})`)}
+    </div>
+
+    <div class="field-group">
+      <label class="field-label">Effects</label>
+      <div class="effects-list">${effectsHTML}</div>
+      <div class="add-btn" style="font-size:11px;padding:3px;margin-top:3px;" onclick="addEffect('${nodeId}',${i})">+ effect</div>
+    </div>
+
+    <div style="font-size:9px;font-family:'JetBrains Mono',monospace;color:var(--smoke);padding-top:2px;">${destStr}</div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  DIALOGUE LINE MUTATIONS
+// ═══════════════════════════════════════════════════════════
+// scope: 'burn_dl'  → burn dialogue
+//        'burn_bl'  → burn blocked_dialogue
+//        'unrec'    → node unrecognised_dialogue
+// context: for burn scopes, nodeIdBurnIdx = 'nodeId_burnIdx'; for unrec, nodeId
+
+function getLineArray(scope, nodeId, burnIdx) {
+  const n = nodes[nodeId];
+  if (!n) return null;
+  if (scope === 'unrec')   return n.unrecognised_dialogue;
+  if (scope === 'burn_dl') return n.burns[burnIdx]?.dialogue;
+  if (scope === 'burn_bl') return n.burns[burnIdx]?.blocked_dialogue;
+  return null;
+}
+
+function updateLineField(el, scope, context, li, field) {
+  // context is either nodeId (unrec) or 'nodeId_burnIdx' (burn)
+  const [nodeId, burnIdx] = scope==='unrec' ? [context, -1] : context.split('_').reduce((acc,v,i,a)=>{
+    // nodeId may contain underscores — burn index is always the last segment
+    if (i===a.length-1) { acc[1]=parseInt(v); } else { acc[0]=(acc[0]?acc[0]+'_':'')+v; }
+    return acc;
+  }, ['',0]);
+  const arr = getLineArray(scope, nodeId, burnIdx);
+  if (arr && arr[li]) { arr[li][field] = el.value; renderNode(nodes[nodeId]); drawConnections(); }
+}
+
+function removeLine(scope, context, li) {
+  const [nodeId, burnIdx] = parseContext(scope, context);
+  const arr = getLineArray(scope, nodeId, burnIdx);
+  if (arr) { arr.splice(li,1); renderNode(nodes[nodeId]); drawConnections(); renderInspector(); }
+}
+
+function addDialogueLine(nodeId, scope, burnIdx) {
+  const n = nodes[nodeId]; if (!n) return;
+  const firstChar = n.characters[0] || '';
+  const arr = getLineArray(scope, nodeId, burnIdx);
+  if (arr) { arr.push(emptyLine(firstChar)); renderNode(n); renderInspector(); scrollInspector(); }
+}
+
+function parseContext(scope, context) {
+  if (scope === 'unrec') return [context, -1];
+  // context is 'nodeId_burnIdx' — burn index is last segment
+  const parts = context.split('_');
+  const burnIdx = parseInt(parts[parts.length-1]);
+  const nodeId  = parts.slice(0, parts.length-1).join('_');
+  return [nodeId, burnIdx];
+}
+
+function scrollInspector() {
+  setTimeout(() => { document.getElementById('inspector-body').scrollTop = 99999; }, 50);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  FIELD / BURN / EFFECT MUTATIONS
+// ═══════════════════════════════════════════════════════════
+function updateField(id, key, val) {
+  nodes[id][key] = val; renderNode(nodes[id]); drawConnections();
+}
+
+function updateBurn(nodeId, i, key, val) {
+  nodes[nodeId].burns[i][key] = val; renderNode(nodes[nodeId]); drawConnections();
+}
+
+function updateEffectKey(nodeId, burnIdx, effectIdx, newKey) {
+  const effects = nodes[nodeId].burns[burnIdx].effects;
+  const entries = Object.entries(effects);
+  if (!entries[effectIdx]) return;
+  const val = entries[effectIdx][1];
+  const newEffects = {};
+  entries.forEach(([k,v],ei) => { newEffects[ei===effectIdx ? newKey : k] = v; });
+  nodes[nodeId].burns[burnIdx].effects = newEffects;
+}
+
+function updateEffectVal(nodeId, burnIdx, effectIdx, val) {
+  const entries = Object.entries(nodes[nodeId].burns[burnIdx].effects);
+  if (entries[effectIdx]) nodes[nodeId].burns[burnIdx].effects[entries[effectIdx][0]] = (val==='true');
+}
+
+function addEffect(nodeId, burnIdx) {
+  nodes[nodeId].burns[burnIdx].effects['new_flag'] = true;
+  renderInspector();
+}
+
+function removeEffect(nodeId, burnIdx, effectIdx) {
+  const keys = Object.keys(nodes[nodeId].burns[burnIdx].effects);
+  if (keys[effectIdx]) delete nodes[nodeId].burns[burnIdx].effects[keys[effectIdx]];
+  renderInspector();
+}
+
+function addChar(nodeId, field='characters') {
+  const inpId = field === 'required_characters' ? 'new-req-char-inp' : 'new-char-inp';
+  const inp = document.getElementById(inpId);
+  if (!inp || !inp.value.trim()) return;
+  if (!nodes[nodeId][field]) nodes[nodeId][field] = [];
+  nodes[nodeId][field].push(inp.value.trim()); inp.value='';
+  renderNode(nodes[nodeId]); renderInspector();
+}
+
+function removeChar(nodeId, field, i) {
+  if (!nodes[nodeId][field]) return;
+  nodes[nodeId][field].splice(i,1); renderNode(nodes[nodeId]); renderInspector();
+}
+
+function addBurnEntry(nodeId) {
+  const firstChar = nodes[nodeId].characters[0] || '';
+  nodes[nodeId].burns.push(makeBurn(firstChar));
+  renderNode(nodes[nodeId]); drawConnections(); renderInspector();
+}
+
+function addBurnToNode(nodeId) { addBurnEntry(nodeId); }
+
+function removeBurn(nodeId, i) {
+  nodes[nodeId].burns.splice(i,1);
+  connections = connections.filter(c => !(c.from_node===nodeId && c.from_burn_index===i));
+  connections.forEach(c => { if (c.from_node===nodeId && c.from_burn_index>i) c.from_burn_index--; });
+  renderNode(nodes[nodeId]); drawConnections(); renderInspector();
+}
+
+function deleteNode(id) {
+  if (!id) return;
+  delete nodes[id];
+  connections = connections.filter(c => c.from_node!==id && c.to_node!==id);
+  document.getElementById(id)?.remove();
+  if (selectedId===id) { selectedId=null; renderInspector(); }
+  drawConnections();
+}
+
+function addNode(type) {
+  // Place new node near centre of current view
+  const cx = (canvasWrap.clientWidth  / 2 - pan.x) / zoom;
+  const cy = (canvasWrap.clientHeight / 2 - pan.y) / zoom;
+  const n = makeNode(type, cx - 105, cy - 60);
+  nodes[n.id] = n;
+  const el = document.createElement('div');
+  el.id = n.id;
+  nodesLayer.appendChild(el);
+  attachNodeEvents(el, n.id);
+  renderNode(n);
+  drawConnections();
+  selectNode(n.id);
+  toast((type === 'terminal' ? 'Terminal' : 'Scene') + ' node added');
+}
+
+function deleteSelected() { if (selectedId) deleteNode(selectedId); }
+
+// ═══════════════════════════════════════════════════════════
+//  ZOOM / VIEW
+// ═══════════════════════════════════════════════════════════
+function zoomBy(delta) {
+  zoom = Math.max(0.2,Math.min(3,zoom+delta));
+  document.getElementById('zoom-label').textContent = Math.round(zoom*100)+'%';
+  applyTransform(); drawConnections();
+}
+function resetView() {
+  pan={x:60,y:60}; zoom=1;
+  document.getElementById('zoom-label').textContent='100%';
+  applyTransform(); drawConnections();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  EXPORT
+// ═══════════════════════════════════════════════════════════
+function buildTreeDict() {
+  const tree = {};
+  Object.values(nodes).forEach(n => {
+    const burns = {};
+    n.burns.forEach((b,i) => {
+      if (!b.item_id) return;
+      const conn = connections.find(c => c.from_node===n.id && c.from_burn_index===i);
+      const lvSuffix = b.level === '*' ? 'lv*' : `lv${b.level}`;
+      burns[`${b.item_id}__${lvSuffix}`] = {
+        item_id: b.item_id, level: b.level,
+        dialogue: b.dialogue,
+        blocked_dialogue: b.blocked_dialogue.length ? b.blocked_dialogue : null,
+        next: conn ? conn.to_node : null,
+        requires: b.requires || null,
+        effects: Object.keys(b.effects).length ? b.effects : null,
+      };
+    });
+    tree[n.id] = {
+      title: n.title, description: n.description, type: n.type,
+      required_characters: n.required_characters || [],
+      characters: n.characters, burns,
+      unrecognised_burn: n.unrecognised_dialogue.length ? { dialogue: n.unrecognised_dialogue } : null,
+    };
+  });
+  return tree;
+}
+
+function gdLines(lines, depth) {
+  if (!lines || !lines.length) return '[]';
+  const pad = '\t'.repeat(depth);
+  const inner = lines.map(l =>
+    `${pad}\t{ "character": "${l.character}", "text": "${(l.text||'').replace(/\\/g,'\\\\').replace(/"/g,'\\"')}" },`
+  ).join('\n');
+  return `[\n${inner}\n${pad}]`;
+}
+
+function gdEffects(obj) {
+  const pairs = Object.entries(obj).map(([k,v]) => `"${k}": ${v}`).join(', ');
+  return `{ ${pairs} }`;
+}
+
+function exportGDScript() {
+  const tree = buildTreeDict();
+  let out = `# progression_data.gd\n# Auto-generated by Campfire Tree Editor\n\nconst TREE : Dictionary = {\n`;
+  Object.entries(tree).forEach(([sid,state]) => {
+    out += `\t"${sid}": {\n`;
+    out += `\t\t"title": "${state.title}",\n`;
+    out += `\t\t"description": "${state.description}",\n`;
+    out += `\t\t"type": "${state.type}",\n`;
+    out += `\t\t"required_characters": ${JSON.stringify(state.required_characters)},\n`;
+    out += `\t\t"characters": ${JSON.stringify(state.characters)},\n`;
+    if (Object.keys(state.burns).length) {
+      out += `\t\t"burns": {\n`;
+      Object.entries(state.burns).forEach(([key,b]) => {
+        out += `\t\t\t"${key}": {\n`;
+        out += `\t\t\t\t"item_id": "${b.item_id}",\n`;
+        out += `\t\t\t\t"level": ${b.level},\n`;
+        out += `\t\t\t\t"dialogue": ${gdLines(b.dialogue,4)},\n`;
+        if (b.blocked_dialogue?.length) out += `\t\t\t\t"blocked_dialogue": ${gdLines(b.blocked_dialogue,4)},\n`;
+        if (b.next)     out += `\t\t\t\t"next": "${b.next}",\n`;
+        if (b.requires) out += `\t\t\t\t"requires": "${b.requires}",\n`;
+        if (b.effects)  out += `\t\t\t\t"effects": ${gdEffects(b.effects)},\n`;
+        out += `\t\t\t},\n`;
+      });
+      out += `\t\t},\n`;
+    } else {
+      out += `\t\t"burns": {},\n`;
+    }
+    if (state.unrecognised_burn) {
+      out += `\t\t"unrecognised_burn": { "dialogue": ${gdLines(state.unrecognised_burn.dialogue,3)} },\n`;
+    }
+    out += `\t},\n`;
+  });
+  out += `}\n`;
+  showExport('GDScript — progression_data.gd', out);
+}
+
+function exportJSON() {
+  const layout = Object.values(nodes).map(n=>({id:n.id,x:n.x,y:n.y}));
+  showExport('JSON', JSON.stringify({layout, tree:buildTreeDict(), connections}, null, 2));
+}
+
+// ── Save to file ───────────────────────────────────────────
+function saveJSON() {
+  const layout = Object.values(nodes).map(n=>({id:n.id,x:n.x,y:n.y}));
+  // Full node data — not just the tree dict — so we can restore exactly
+  const save = {
+    version: 1,
+    nodes: Object.values(nodes),
+    connections,
+    nodeCounter,
+    pan, zoom,
+  };
+  const blob = new Blob([JSON.stringify(save, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'campfire_tree.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('Saved campfire_tree.json');
+}
+
+// ── Load from file ─────────────────────────────────────────
+function triggerImport() {
+  document.getElementById('import-file-input').value = '';
+  document.getElementById('import-file-input').click();
+}
+
+function importJSON(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      _loadFromSave(data);
+      toast('Imported ' + file.name);
+    } catch(err) {
+      alert('Failed to parse JSON: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function _loadFromSave(data) {
+  // Wipe current state
+  nodesLayer.innerHTML = '';
+  nodes = {}; connections = []; nodeCounter = 0;
+
+  // Support both the full save format (version:1) and the old Export JSON format
+  if (data.version === 1) {
+    // Full save — restore everything exactly
+    nodeCounter = data.nodeCounter || 0;
+    connections = data.connections || [];
+    if (data.pan)  { pan.x = data.pan.x; pan.y = data.pan.y; }
+    if (data.zoom) { zoom = data.zoom; document.getElementById('zoom-label').textContent = Math.round(zoom*100)+'%'; }
+
+    (data.nodes || []).forEach(n => {
+      // Ensure new fields exist for saves made before they were added
+      n.required_characters = n.required_characters || [];
+      n.unrecognised_dialogue = n.unrecognised_dialogue || [];
+      n.burns = (n.burns || []).map(b => ({
+        item_id: b.item_id || '', level: b.level ?? 0,
+        dialogue: b.dialogue || [], blocked_dialogue: b.blocked_dialogue || [],
+        requires: b.requires || '', effects: b.effects || {},
+      }));
+      nodes[n.id] = n;
+      const el = document.createElement('div');
+      el.id = n.id;
+      nodesLayer.appendChild(el);
+      attachNodeEvents(el, n.id);
+    });
+
+  } else if (data.tree && data.connections) {
+    // Old Export JSON format — reconstruct nodes from tree dict + layout
+    const layoutMap = {};
+    (data.layout || []).forEach(l => { layoutMap[l.id] = l; });
+    connections = data.connections || [];
+
+    let maxCounter = 0;
+    Object.entries(data.tree).forEach(([sid, state]) => {
+      // Parse burn dict back into array, preserving connection order
+      const burnsArr = [];
+      Object.entries(state.burns || {}).forEach(([key, b]) => {
+        burnsArr.push({
+          item_id: b.item_id || '', level: b.level ?? 0,
+          dialogue: b.dialogue || [], blocked_dialogue: b.blocked_dialogue || [],
+          requires: b.requires || '', effects: b.effects || {},
+        });
+      });
+      const pos = layoutMap[sid] || {};
+      const n = {
+        id: sid, type: state.type || 'scene',
+        x: pos.x ?? 200, y: pos.y ?? 200,
+        title: state.title || sid, description: state.description || '',
+        required_characters: state.required_characters || [],
+        characters: state.characters || [],
+        burns: burnsArr,
+        unrecognised_dialogue: state.unrecognised_burn?.dialogue || [],
+      };
+      nodes[sid] = n;
+      // Track highest node number to avoid ID collisions on new nodes
+      const m = sid.match(/node_(\d+)/);
+      if (m) maxCounter = Math.max(maxCounter, parseInt(m[1]));
+      const el = document.createElement('div');
+      el.id = sid;
+      nodesLayer.appendChild(el);
+      attachNodeEvents(el, sid);
+    });
+    nodeCounter = maxCounter;
+
+  } else {
+    alert('Unrecognised file format.');
+    return;
+  }
+
+  applyTransform();
+  renderAll();
+  selectNode(null);
+}
+
+function showExport(title, code) {
+  document.getElementById('export-title').textContent = title;
+  document.getElementById('export-code').textContent = code;
+  document.getElementById('export-panel').classList.add('open');
+}
+function closeExport() { document.getElementById('export-panel').classList.remove('open'); }
+function copyExport() {
+  navigator.clipboard.writeText(document.getElementById('export-code').textContent)
+    .then(() => toast('Copied to clipboard'));
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SAMPLE DATA — structured dialogue
+// ═══════════════════════════════════════════════════════════
+function loadSample() {
+  nodesLayer.innerHTML='';
+  nodes={}; connections=[]; nodeCounter=0;
+
+  const defs = [
+    {
+      id:'night_one_arrival', title:'Night One — Arrival', type:'scene', x:60, y:120,
+      description:'The fire is young. Two strangers sit across from each other.',
+      required_characters:['mara','old_finn'],
+      characters:['mara','old_finn'],
+      burns:[
+        {
+          item_id:'pine_branch', level:0, requires:'', effects:{},
+          dialogue:[
+            {character:'old_finn', text:"Good wood. Pine burns honest."},
+          ],
+          blocked_dialogue:[],
+        },
+        {
+          item_id:'the_letter', level:0, requires:'', effects:{letter_burned:true, mara_trusts_player:false},
+          dialogue:[
+            {character:'mara',     text:"Where did you get that?"},
+            {character:'old_finn', text:"...Let her speak."},
+          ],
+          blocked_dialogue:[],
+        },
+      ],
+      unrecognised_dialogue:[
+        {character:'mara', text:"The fire doesn't care what you feed it."},
+      ],
+    },
+    {
+      id:'night_one_small_talk', title:'Small Talk', type:'scene', x:390, y:20,
+      description:'The warmth loosens tongues. Finn begins a story.',
+      required_characters:['mara','old_finn'],
+      characters:['mara','old_finn'],
+      burns:[
+        {
+          item_id:'finn_pipe', level:0, requires:'finn_pipe_in_inventory', effects:{},
+          dialogue:[
+            {character:'old_finn', text:"I… didn't think you'd do it."},
+          ],
+          blocked_dialogue:[
+            {character:'old_finn', text:"That's mine. Put it down."},
+          ],
+        },
+        {
+          item_id:'pine_branch', level:0, requires:'', effects:{},
+          dialogue:[
+            {character:'old_finn', text:"Good. Keep it fed."},
+          ],
+          blocked_dialogue:[],
+        },
+      ],
+      unrecognised_dialogue:[
+        {character:'mara', text:"It burns. The conversation drifts."},
+      ],
+    },
+    {
+      id:'night_one_confession', title:'Confession', type:'scene', x:390, y:280,
+      description:'Mara is shaken. Finn pretends not to have seen.',
+      required_characters:['mara','old_finn'],
+      characters:['mara','old_finn'],
+      burns:[
+        {
+          item_id:'mara_journal', level:0, requires:'mara_trusts_player', effects:{mara_hostile:true},
+          dialogue:[
+            {character:'mara', text:"That was MINE."},
+            {character:'mara', text:"You had no right."},
+          ],
+          blocked_dialogue:[
+            {character:'mara', text:"Don't."},
+          ],
+        },
+        {
+          item_id:'pine_branch', level:0, requires:'', effects:{},
+          dialogue:[
+            {character:'old_finn', text:"Quiet night."},
+          ],
+          blocked_dialogue:[],
+        },
+      ],
+      unrecognised_dialogue:[
+        {character:'mara', text:"She watches you carefully."},
+      ],
+    },
+    {
+      id:'night_one_finn_story', title:"Finn's Story", type:'scene', x:720, y:20,
+      description:'Finn falls silent, then speaks of a fire he once knew.',
+      required_characters:['old_finn'],
+      characters:['old_finn'],
+      burns:[
+        {
+          item_id:'old_bone', level:0, requires:'', effects:{finn_shaken:true},
+          dialogue:[
+            {character:'old_finn', text:"Where did you find that."},
+            {character:'old_finn', text:"That's not a question."},
+          ],
+          blocked_dialogue:[],
+        },
+      ],
+      unrecognised_dialogue:[
+        {character:'old_finn', text:"Hmm."},
+      ],
+    },
+    {
+      id:'night_end', title:'Night Ends', type:'terminal', x:720, y:300,
+      description:'The fire dies to embers. The night is over.',
+      required_characters:[], characters:[], burns:[], unrecognised_dialogue:[],
+    },
+  ];
+
+  defs.forEach(d => {
+    nodeCounter++;
+    nodes[d.id] = JSON.parse(JSON.stringify(d)); // deep copy
+    const el = document.createElement('div');
+    el.id = d.id;
+    nodesLayer.appendChild(el);
+    attachNodeEvents(el, d.id);
+    renderNode(nodes[d.id]);
+  });
+
+  connections = [
+    {from_node:'night_one_arrival',    from_burn_index:0, to_node:'night_one_small_talk'},
+    {from_node:'night_one_arrival',    from_burn_index:1, to_node:'night_one_confession'},
+    {from_node:'night_one_small_talk', from_burn_index:0, to_node:'night_one_finn_story'},
+    {from_node:'night_one_small_talk', from_burn_index:1, to_node:'night_end'},
+    {from_node:'night_one_confession', from_burn_index:0, to_node:'night_end'},
+    {from_node:'night_one_confession', from_burn_index:1, to_node:'night_end'},
+    {from_node:'night_one_finn_story', from_burn_index:0, to_node:'night_end'},
+  ];
+
+  renderAll();
+  toast('Sample tree loaded');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════════════════
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.classList.remove('show'),2200);
+}
+
+applyTransform();
+loadSample();
+</script>
+</body>
+</html>
